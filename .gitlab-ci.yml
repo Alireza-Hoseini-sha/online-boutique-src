@@ -1,12 +1,27 @@
 stages:
   - test
+  - build
+  - scan
 
-test-runner:
+test-frontend:
   stage: test
-  image: alpine:3.22
-
+  image: golang:1.27.1-alpine3.24
   script:
-    - echo "GitLab Runner is working!"
-    - echo "Running inside Docker executor"
-    - uname -a
-    - cat /etc/os-release
+    - cd src/frontend
+    - go test ./...
+
+build-and-push-frontend:
+  stage: build
+  image: docker:29.8.0
+  script:
+    - docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    - docker build -t "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA" src/frontend
+    - docker push "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
+
+scan-frontend:
+  stage: scan
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy image --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" --exit-code 0 --severity HIGH,CRITICAL "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
