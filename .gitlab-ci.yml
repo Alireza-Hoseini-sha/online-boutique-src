@@ -2,9 +2,11 @@ stages:
   - test
   - build
   - scan
+  - deploy
 
 test-frontend:
   stage: test
+  when: manual
   image: golang:1.27.1-alpine3.24
   script:
     - cd src/frontend
@@ -12,6 +14,7 @@ test-frontend:
 
 build-and-push-frontend:
   stage: build
+  when: manual
   image: docker:29.8.0
   script:
     - docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
@@ -20,8 +23,67 @@ build-and-push-frontend:
 
 scan-frontend:
   stage: scan
+  when: manual
   image:
-    name: aquasec/trivy:latest
+    name: aquasec/trivy:0.74.0
     entrypoint: [""]
   script:
     - trivy image --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" --exit-code 0 --severity HIGH,CRITICAL "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
+
+k8s-test:
+  stage: deploy
+  when: manual
+  image: 
+    name: bitnami/kubectl@sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492
+    entrypoint: [""]
+  script:
+    - echo "$KUBE_CA" | base64 -d > ca.crt
+
+    - kubectl config set-cluster portfolio-cluster
+        --server="$KUBE_SERVER"
+        --certificate-authority=ca.crt
+
+    - kubectl config set-credentials gitlab-ci
+        --token="$KUBE_TOKEN"
+
+    - kubectl config set-context portfolio
+        --cluster=portfolio-cluster
+        --user=gitlab-ci
+        --namespace=online-boutique
+
+    - kubectl config use-context portfolio
+
+    - kubectl auth can-i get deployments
+    - kubectl auth can-i patch deployments
+    - kubectl auth can-i get pods
+    - kubectl get deployments -n online-boutique
+
+deploy-frontend:
+  stage: deploy
+  when: manual
+  image:
+    name: bitnami/kubectl@sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492
+    entrypoint: [""]
+  script:
+    - echo "$KUBE_CA" | base64 -d > ca.crt
+
+    - kubectl config set-cluster portfolio-cluster 
+        --server="$KUBE_SERVER"
+        --certificate-authority=ca.crt
+
+    - kubectl config set-credentials gitlab-ci 
+        --token="$KUBE_TOKEN"
+
+    - kubectl config set-context portfolio 
+        --cluster=portfolio-cluster 
+        --user=gitlab-ci 
+        --namespace=online-boutique
+
+    - kubectl config use-context portfolio
+
+    - kubectl set image deployment/frontend 
+        frontend="$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA" 
+        --namespace=online-boutique
+
+    - kubectl rollout status deployment/frontend 
+        --namespace=online-boutique
