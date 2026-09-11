@@ -12,14 +12,53 @@ test-frontend:
     - cd src/frontend
     - go test ./...
 
-build-and-push-frontend:
+build-and-push:
   stage: build
   when: manual
   image: docker:29.8.0
+
+  parallel:
+    matrix:
+      - SERVICE: adservice
+        CONTEXT: src/adservice
+
+      - SERVICE: cartservice
+        CONTEXT: src/cartservice/src
+
+      - SERVICE: checkoutservice
+        CONTEXT: src/checkoutservice
+
+      - SERVICE: currencyservice
+        CONTEXT: src/currencyservice
+
+      - SERVICE: emailservice
+        CONTEXT: src/emailservice
+
+      - SERVICE: frontend
+        CONTEXT: src/frontend
+
+      - SERVICE: loadgenerator
+        CONTEXT: src/loadgenerator
+
+      - SERVICE: paymentservice
+        CONTEXT: src/paymentservice
+
+      - SERVICE: productcatalogservice
+        CONTEXT: src/productcatalogservice
+
+      - SERVICE: recommendationservice
+        CONTEXT: src/recommendationservice
+
+      - SERVICE: shippingservice
+        CONTEXT: src/shippingservice
+
+      - SERVICE: shoppingassistantservice
+        CONTEXT: src/shoppingassistantservice
+
   script:
-    - docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
-    - docker build -t "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA" src/frontend
-    - docker push "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - docker build -t "$CI_REGISTRY_IMAGE/$SERVICE:$CI_COMMIT_SHORT_SHA" "$CONTEXT"
+    - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$CI_COMMIT_SHORT_SHA"
 
 scan-frontend:
   stage: scan
