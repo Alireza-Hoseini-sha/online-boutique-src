@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../manifests/namesapce.yaml
+
+  # ConfigMaps
+  - ../../manifests/configmaps
+
+  # Deployments
+  - ../../manifests/deployments
+
+  # Services
+  - ../../manifests/services
+
+  # Autoscaling
+  - ../../manifests/autoscaling
+
+  # Network Policies
+  - ../../manifests/network-policies
+
+  # Service Accounts
+  - ../../manifests/service-accounts
+
+  # RBAC
+  - ../../manifests/rbac
+
+  # Secrets
+  - ../../manifests/secrets
+
+  # Ingress
+  - ../../manifests/ingress

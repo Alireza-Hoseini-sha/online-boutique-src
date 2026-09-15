@@ -67,7 +67,8 @@ scan-frontend:
     name: aquasec/trivy:0.74.0
     entrypoint: [""]
   script:
-    - trivy image --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD" --exit-code 0 --severity HIGH,CRITICAL "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
+    - trivy image --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD"
+      --exit-code 0 --severity HIGH,CRITICAL "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
 
 k8s-test:
   stage: deploy
