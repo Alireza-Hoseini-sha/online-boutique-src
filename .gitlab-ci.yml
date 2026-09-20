@@ -1,176 +1,499 @@
 stages:
-  # - test
   - build
-  # - scan
-  # - deploy
-
-# test-frontend:
-#   stage: test
-#   when: manual
-#   image: golang:1.27.1-alpine3.24
-#   script:
-#     - cd src/frontend
-#     - go test ./...
-
-# build-and-push:
-#   stage: build
-#   when: manual
-#   image: docker:29.8.0
-
-#   parallel:
-#     matrix:
-#       - SERVICE: adservice
-#         CONTEXT: src/adservice
-
-#       - SERVICE: cartservice
-#         CONTEXT: src/cartservice/src
-
-#       - SERVICE: checkoutservice
-#         CONTEXT: src/checkoutservice
-
-#       - SERVICE: currencyservice
-#         CONTEXT: src/currencyservice
-
-#       - SERVICE: emailservice
-#         CONTEXT: src/emailservice
-
-#       - SERVICE: frontend
-#         CONTEXT: src/frontend
-
-#       - SERVICE: loadgenerator
-#         CONTEXT: src/loadgenerator
-
-#       - SERVICE: paymentservice
-#         CONTEXT: src/paymentservice
-
-#       - SERVICE: productcatalogservice
-#         CONTEXT: src/productcatalogservice
-
-#       - SERVICE: recommendationservice
-#         CONTEXT: src/recommendationservice
-
-#       - SERVICE: shippingservice
-#         CONTEXT: src/shippingservice
-
-#       - SERVICE: shoppingassistantservice
-#         CONTEXT: src/shoppingassistantservice
-
-#   script:
-#     - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
-#     - docker build -t "$CI_REGISTRY_IMAGE/$SERVICE:$CI_COMMIT_SHORT_SHA" "$CONTEXT"
-#     - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$CI_COMMIT_SHORT_SHA"
-
-# nexus-test:
-#   stage: build
-#   image: docker:29.8.0
-
-#   script:
-#     - echo "$NEXUS_PASSWORD" | docker login "$NEXUS_REGISTRY" -u "$NEXUS_USERNAME" --password-stdin
-#     - docker pull busybox:1.38.0
-#     - docker tag busybox:1.38.0 "$NEXUS_REGISTRY/microservices-demo/test:$CI_COMMIT_SHORT_SHA"
-#     - docker push "$NEXUS_REGISTRY/microservices-demo/test:$CI_COMMIT_SHORT_SHA"
-
-# scan-frontend:
-#   stage: scan
-#   when: manual
-#   image:
-#     name: aquasec/trivy:0.74.0
-#     entrypoint: [""]
-#   script:
-#     - trivy image --username "$CI_REGISTRY_USER" --password "$CI_REGISTRY_PASSWORD"
-#       --exit-code 0 --severity HIGH,CRITICAL "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
-
-# k8s-test:
-#   stage: deploy
-#   when: manual
-#   image: 
-#     name: bitnami/kubectl@sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492
-#     entrypoint: [""]
-#   script:
-#     - echo "$KUBE_CA" | base64 -d > ca.crt
-
-#     - kubectl config set-cluster portfolio-cluster
-#         --server="$KUBE_SERVER"
-#         --certificate-authority=ca.crt
-
-#     - kubectl config set-credentials gitlab-ci
-#         --token="$KUBE_TOKEN"
-
-#     - kubectl config set-context portfolio
-#         --cluster=portfolio-cluster
-#         --user=gitlab-ci
-#         --namespace=online-boutique
-
-#     - kubectl config use-context portfolio
-
-#     - kubectl auth can-i get deployments
-#     - kubectl auth can-i patch deployments
-#     - kubectl auth can-i get pods
-#     - kubectl get deployments -n online-boutique
-
-# deploy-frontend:
-#   stage: deploy
-#   when: manual
-#   image:
-#     name: bitnami/kubectl@sha256:b29d8c1665b70817259ceecaea16ab27aab6368b48daf485d19436c809067492
-#     entrypoint: [""]
-#   script:
-#     - echo "$KUBE_CA" | base64 -d > ca.crt
-
-#     - kubectl config set-cluster portfolio-cluster 
-#         --server="$KUBE_SERVER"
-#         --certificate-authority=ca.crt
-
-#     - kubectl config set-credentials gitlab-ci 
-#         --token="$KUBE_TOKEN"
-
-#     - kubectl config set-context portfolio 
-#         --cluster=portfolio-cluster 
-#         --user=gitlab-ci 
-#         --namespace=online-boutique
-
-#     - kubectl config use-context portfolio
-
-#     - kubectl set image deployment/frontend 
-#         frontend="$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA" 
-#         --namespace=online-boutique
-
-#     - kubectl rollout status deployment/frontend 
-#         --namespace=online-boutique
+  - scan
+  - deploy
+  - promote
+  - deploy-prod
 
 
-build-and-push:
+# ============================================================
+# Variables
+# ============================================================
+
+variables:
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+  NEXUS_REPOSITORY: "microservices-demo"
+
+
+# ============================================================
+# Build Template
+# ============================================================
+
+.build-template:
   stage: build
   image: docker:29.8.0
 
-  parallel:
-    matrix:
-      - SERVICE: adservice
-        CONTEXT: src/adservice
-      - SERVICE: cartservice
-        CONTEXT: src/cartservice/src
-      - SERVICE: checkoutservice
-        CONTEXT: src/checkoutservice
-      - SERVICE: currencyservice
-        CONTEXT: src/currencyservice
-      - SERVICE: emailservice
-        CONTEXT: src/emailservice
-      - SERVICE: frontend
-        CONTEXT: src/frontend
-      - SERVICE: loadgenerator
-        CONTEXT: src/loadgenerator
-      - SERVICE: paymentservice
-        CONTEXT: src/paymentservice
-      - SERVICE: productcatalogservice
-        CONTEXT: src/productcatalogservice
-      - SERVICE: recommendationservice
-        CONTEXT: src/recommendationservice
-      - SERVICE: shippingservice
-        CONTEXT: src/shippingservice
-      - SERVICE: shoppingassistantservice
-        CONTEXT: src/shoppingassistantservice
-
   script:
     - echo "$NEXUS_PASSWORD" | docker login "$NEXUS_REGISTRY" -u "$NEXUS_USERNAME" --password-stdin
-    - docker build -t "$NEXUS_REGISTRY/microservices-demo/$SERVICE:$CI_COMMIT_SHORT_SHA" "$CONTEXT"
-    - docker push "$NEXUS_REGISTRY/microservices-demo/$SERVICE:$CI_COMMIT_SHORT_SHA"
+
+    - |
+      IMAGE="$NEXUS_REGISTRY/$NEXUS_REPOSITORY/$SERVICE:$IMAGE_TAG"
+
+      echo "Building $IMAGE"
+      echo "Context: $CONTEXT"
+
+      docker build \
+        -t "$IMAGE" \
+        "$CONTEXT"
+
+      echo "Pushing $IMAGE"
+
+      docker push "$IMAGE"
+
+    - echo "$SERVICE $IMAGE_TAG" > "$SERVICE.changed"
+
+  artifacts:
+    paths:
+      - "$SERVICE.changed"
+    expire_in: 1 day
+
+
+# ============================================================
+# Build Jobs
+# ============================================================
+
+build-adservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "adservice"
+    CONTEXT: "src/adservice"
+
+  rules:
+    - changes:
+        - src/adservice/**/*
+
+
+build-cartservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "cartservice"
+    CONTEXT: "src/cartservice/src"
+
+  rules:
+    - changes:
+        - src/cartservice/**/*
+
+
+build-checkoutservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "checkoutservice"
+    CONTEXT: "src/checkoutservice"
+
+  rules:
+    - changes:
+        - src/checkoutservice/**/*
+
+
+build-currencyservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "currencyservice"
+    CONTEXT: "src/currencyservice"
+
+  rules:
+    - changes:
+        - src/currencyservice/**/*
+
+
+build-emailservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "emailservice"
+    CONTEXT: "src/emailservice"
+
+  rules:
+    - changes:
+        - src/emailservice/**/*
+
+
+build-frontend:
+  extends: .build-template
+
+  variables:
+    SERVICE: "frontend"
+    CONTEXT: "src/frontend"
+
+  rules:
+    - changes:
+        - src/frontend/**/*
+
+
+build-paymentservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "paymentservice"
+    CONTEXT: "src/paymentservice"
+
+  rules:
+    - changes:
+        - src/paymentservice/**/*
+
+
+build-productcatalogservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "productcatalogservice"
+    CONTEXT: "src/productcatalogservice"
+
+  rules:
+    - changes:
+        - src/productcatalogservice/**/*
+
+
+build-recommendationservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "recommendationservice"
+    CONTEXT: "src/recommendationservice"
+
+  rules:
+    - changes:
+        - src/recommendationservice/**/*
+
+
+build-shippingservice:
+  extends: .build-template
+
+  variables:
+    SERVICE: "shippingservice"
+    CONTEXT: "src/shippingservice"
+
+  rules:
+    - changes:
+        - src/shippingservice/**/*
+
+
+# ============================================================
+# Scan Template
+# ============================================================
+
+.scan-template:
+  stage: scan
+
+  image:
+    name: aquasec/trivy:0.74.0
+    entrypoint: [""]
+
+  script:
+    - |
+      IMAGE="$NEXUS_REGISTRY/$NEXUS_REPOSITORY/$SERVICE:$IMAGE_TAG"
+
+      echo "Scanning $IMAGE"
+
+      trivy image \
+        --insecure \
+        --username "$NEXUS_USERNAME" \
+        --password "$NEXUS_PASSWORD" \
+        --severity HIGH,CRITICAL \
+        --exit-code 1 \
+        "$IMAGE"
+
+
+# ============================================================
+# Scan Jobs
+# ============================================================
+
+scan-adservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "adservice"
+
+  needs:
+    - job: build-adservice
+
+  rules:
+    - changes:
+        - src/adservice/**/*
+
+
+scan-cartservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "cartservice"
+
+  needs:
+    - job: build-cartservice
+
+  rules:
+    - changes:
+        - src/cartservice/**/*
+
+
+scan-checkoutservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "checkoutservice"
+
+  needs:
+    - job: build-checkoutservice
+
+  rules:
+    - changes:
+        - src/checkoutservice/**/*
+
+
+scan-currencyservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "currencyservice"
+
+  needs:
+    - job: build-currencyservice
+
+  rules:
+    - changes:
+        - src/currencyservice/**/*
+
+
+scan-emailservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "emailservice"
+
+  needs:
+    - job: build-emailservice
+
+  rules:
+    - changes:
+        - src/emailservice/**/*
+
+
+scan-frontend:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "frontend"
+
+  needs:
+    - job: build-frontend
+
+  rules:
+    - changes:
+        - src/frontend/**/*
+
+
+scan-paymentservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "paymentservice"
+
+  needs:
+    - job: build-paymentservice
+
+  rules:
+    - changes:
+        - src/paymentservice/**/*
+
+
+scan-productcatalogservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "productcatalogservice"
+
+  needs:
+    - job: build-productcatalogservice
+
+  rules:
+    - changes:
+        - src/productcatalogservice/**/*
+
+
+scan-recommendationservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "recommendationservice"
+
+  needs:
+    - job: build-recommendationservice
+
+  rules:
+    - changes:
+        - src/recommendationservice/**/*
+
+
+scan-shippingservice:
+  extends: .scan-template
+
+  variables:
+    SERVICE: "shippingservice"
+
+  needs:
+    - job: build-shippingservice
+
+  rules:
+    - changes:
+        - src/shippingservice/**/*
+
+
+# ============================================================
+# Update Dev GitOps
+# ============================================================
+
+update-dev:
+  stage: deploy
+  image: alpine:3.22
+
+  rules:
+    - changes:
+        - src/**/*
+
+  script:
+    - apk add --no-cache git yq
+
+    - git clone "https://oauth2:${GITOPS_TOKEN}@gitlab.local/online-boutique-gitops.git"
+
+    - cd online-boutique-gitops
+
+    - |
+      set -eu
+
+      changed=0
+
+      for file in ../*.changed; do
+        [ -f "$file" ] || continue
+
+        changed=1
+
+        service="$(awk '{print $1}' "$file")"
+        tag="$(awk '{print $2}' "$file")"
+
+        echo "Updating DEV:"
+        echo "  Service: $service"
+        echo "  Tag:     $tag"
+
+        SERVICE="$service" TAG="$tag" \
+        yq -i '
+          (.images[] | select(.name == env(SERVICE)).newTag) = env(TAG)
+        ' overlays/dev/kustomization.yaml
+      done
+
+      if [ "$changed" -eq 0 ]; then
+        echo "No changed services found."
+        exit 0
+      fi
+
+    - git config user.name "GitLab CI"
+    - git config user.email "gitlab-ci@gitlab.local"
+
+    - git add overlays/dev/kustomization.yaml
+
+    - |
+      if git diff --cached --quiet; then
+        echo "No GitOps changes to commit."
+        exit 0
+      fi
+
+    - git commit -m "update dev images ${CI_COMMIT_SHORT_SHA}"
+
+    - git push origin main
+
+
+# ============================================================
+# Production Promotion Gate
+# ============================================================
+
+promote-prod:
+  stage: promote
+  image: alpine:3.22
+
+  rules:
+    - changes:
+        - src/**/*
+
+  script:
+    - echo "========================================"
+    - echo " Production Promotion"
+    - echo "========================================"
+    - echo ""
+    - echo "Images from this pipeline:"
+    - |
+      for file in *.changed; do
+        [ -f "$file" ] || continue
+        cat "$file"
+      done
+    - echo ""
+    - echo "These images were already built and scanned."
+    - echo "Promoting them to production."
+
+  when: manual
+  allow_failure: false
+
+
+# ============================================================
+# Update Prod GitOps
+# ============================================================
+
+update-prod:
+  stage: deploy-prod
+  image: alpine:3.22
+
+  rules:
+    - changes:
+        - src/**/*
+
+  script:
+    - apk add --no-cache git yq
+
+    - git clone "https://oauth2:${GITOPS_TOKEN}@gitlab.local/online-boutique-gitops.git"
+
+    - cd online-boutique-gitops
+
+    - |
+      set -eu
+
+      changed=0
+
+      for file in ../*.changed; do
+        [ -f "$file" ] || continue
+
+        changed=1
+
+        service="$(awk '{print $1}' "$file")"
+        tag="$(awk '{print $2}' "$file")"
+
+        echo "Promoting to PROD:"
+        echo "  Service: $service"
+        echo "  Tag:     $tag"
+
+        SERVICE="$service" TAG="$tag" \
+        yq -i '
+          (.images[] | select(.name == env(SERVICE)).newTag) = env(TAG)
+        ' overlays/prod/kustomization.yaml
+      done
+
+      if [ "$changed" -eq 0 ]; then
+        echo "No changed services found."
+        exit 0
+      fi
+
+    - git config user.name "GitLab CI"
+    - git config user.email "gitlab-ci@gitlab.local"
+
+    - git add overlays/prod/kustomization.yaml
+
+    - |
+      if git diff --cached --quiet; then
+        echo "No GitOps changes to commit."
+        exit 0
+      fi
+
+    - git commit -m "promote images ${CI_COMMIT_SHORT_SHA} to prod"
+
+    - git push origin main
