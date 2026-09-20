@@ -60,6 +60,16 @@ build-and-push:
     - docker build -t "$CI_REGISTRY_IMAGE/$SERVICE:$CI_COMMIT_SHORT_SHA" "$CONTEXT"
     - docker push "$CI_REGISTRY_IMAGE/$SERVICE:$CI_COMMIT_SHORT_SHA"
 
+nexus-test:
+  stage: build
+  image: docker:29.8.0
+
+  script:
+    - echo "$NEXUS_PASSWORD" | docker login "$NEXUS_REGISTRY" -u "$NEXUS_USERNAME" --password-stdin
+    - docker pull busybox:1.38.0
+    - docker tag busybox:1.38.0 "$NEXUS_REGISTRY/microservices-demo/test:$CI_COMMIT_SHORT_SHA"
+    - docker push "$NEXUS_REGISTRY/microservices-demo/test:$CI_COMMIT_SHORT_SHA"
+    
 scan-frontend:
   stage: scan
   when: manual
@@ -127,3 +137,4 @@ deploy-frontend:
 
     - kubectl rollout status deployment/frontend 
         --namespace=online-boutique
+
