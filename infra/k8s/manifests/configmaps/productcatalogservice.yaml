@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: productcatalogservice
-  namespace: online-boutique
-data:
-  PORT: "3550"
-  DISABLE_PROFILER: "1"

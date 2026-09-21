@@ -1,8 +1,0 @@
----
-- name: Provision GitLab server
-  hosts: gitlab
-  become: true
-
-  roles:
-    - docker
-    - gitlab

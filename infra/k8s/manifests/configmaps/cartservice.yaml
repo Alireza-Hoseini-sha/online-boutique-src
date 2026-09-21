@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cartservice
-  namespace: online-boutique
-data:
-  REDIS_ADDR: "redis-cart:6379"

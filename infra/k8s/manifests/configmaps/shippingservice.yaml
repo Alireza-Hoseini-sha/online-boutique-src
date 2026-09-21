@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: shippingservice
-  namespace: online-boutique
-data:
-  PORT: "50051"
-  DISABLE_PROFILER: "1"
