@@ -1,14 +1,9 @@
 stages:
   - build
-  # - scan
   - deploy
   - promote
   - deploy-prod
 
-
-# ============================================================
-# Variables
-# ============================================================
 
 variables:
   IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
@@ -16,215 +11,112 @@ variables:
 
 
 # ============================================================
-# Build Template
+# BUILD
 # ============================================================
 
-.build-template:
+build:
   stage: build
   image: docker:29.8.0
 
+  parallel:
+    matrix:
+      - SERVICE: "adservice"
+        CONTEXT: "src/adservice"
+
+      - SERVICE: "cartservice"
+        CONTEXT: "src/cartservice/src"
+
+      - SERVICE: "checkoutservice"
+        CONTEXT: "src/checkoutservice"
+
+      - SERVICE: "currencyservice"
+        CONTEXT: "src/currencyservice"
+
+      - SERVICE: "emailservice"
+        CONTEXT: "src/emailservice"
+
+      - SERVICE: "frontend"
+        CONTEXT: "src/frontend"
+
+      - SERVICE: "paymentservice"
+        CONTEXT: "src/paymentservice"
+
+      - SERVICE: "productcatalogservice"
+        CONTEXT: "src/productcatalogservice"
+
+      - SERVICE: "recommendationservice"
+        CONTEXT: "src/recommendationservice"
+
+      - SERVICE: "shippingservice"
+        CONTEXT: "src/shippingservice"
+
   script:
     - echo "$NEXUS_PASSWORD" | docker login "$NEXUS_REGISTRY" -u "$NEXUS_USERNAME" --password-stdin
-
     - |
       IMAGE="$NEXUS_REGISTRY/$NEXUS_REPOSITORY/$SERVICE:$IMAGE_TAG"
 
-      echo "Building $IMAGE"
+      echo "========================================"
+      echo "Building service"
+      echo "Service: $SERVICE"
       echo "Context: $CONTEXT"
+      echo "Image:   $IMAGE"
+      echo "========================================"
 
       docker build \
         -t "$IMAGE" \
         "$CONTEXT"
 
-      echo "Pushing $IMAGE"
+      echo "========================================"
+      echo "Pushing image"
+      echo "Image: $IMAGE"
+      echo "========================================"
 
       docker push "$IMAGE"
 
-    - echo "$SERVICE $IMAGE_TAG" > "$SERVICE.changed"
-
-  artifacts:
-    paths:
-      - "$SERVICE.changed"
-    expire_in: 1 day
+      echo "Successfully pushed $IMAGE"
 
 
 # ============================================================
-# Build Jobs
-# ============================================================
-
-build-adservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "adservice"
-    CONTEXT: "src/adservice"
-
-  rules:
-    - changes:
-        - src/adservice/**/*
-
-
-build-cartservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "cartservice"
-    CONTEXT: "src/cartservice/src"
-
-  rules:
-    - changes:
-        - src/cartservice/**/*
-
-
-build-checkoutservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "checkoutservice"
-    CONTEXT: "src/checkoutservice"
-
-  rules:
-    - changes:
-        - src/checkoutservice/**/*
-
-
-build-currencyservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "currencyservice"
-    CONTEXT: "src/currencyservice"
-
-  rules:
-    - changes:
-        - src/currencyservice/**/*
-
-
-build-emailservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "emailservice"
-    CONTEXT: "src/emailservice"
-
-  rules:
-    - changes:
-        - src/emailservice/**/*
-
-
-build-frontend:
-  extends: .build-template
-
-  variables:
-    SERVICE: "frontend"
-    CONTEXT: "src/frontend"
-
-  rules:
-    - changes:
-        - src/frontend/**/*
-
-
-build-paymentservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "paymentservice"
-    CONTEXT: "src/paymentservice"
-
-  rules:
-    - changes:
-        - src/paymentservice/**/*
-
-
-build-productcatalogservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "productcatalogservice"
-    CONTEXT: "src/productcatalogservice"
-
-  rules:
-    - changes:
-        - src/productcatalogservice/**/*
-
-
-build-recommendationservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "recommendationservice"
-    CONTEXT: "src/recommendationservice"
-
-  rules:
-    - changes:
-        - src/recommendationservice/**/*
-
-
-build-shippingservice:
-  extends: .build-template
-
-  variables:
-    SERVICE: "shippingservice"
-    CONTEXT: "src/shippingservice"
-
-  rules:
-    - changes:
-        - src/shippingservice/**/*
-
-# ============================================================
-# trivy scan placeholder --- IGNORE ---
-# ============================================================
-
-# ============================================================
-# Update Dev GitOps
+# DEPLOY TO DEV
 # ============================================================
 
 update-dev:
   stage: deploy
   image: alpine:3.22
 
-  rules:
-    - changes:
-        - src/**/*
-
   script:
     - apk add --no-cache git yq
-
-    - git clone "https://oauth2:${GITOPS_TOKEN}@gitlab.local/online-boutique-gitops.git"
-
+    - git clone "https://x-access-token:${GITOPS_TOKEN}@github.com/Alireza-Hoseini-sha/online-boutique-gitops.git"
     - cd online-boutique-gitops
 
     - |
-      set -eu
+      echo "========================================"
+      echo "Updating DEV"
+      echo "Image tag: $CI_COMMIT_SHORT_SHA"
+      echo "========================================"
 
-      changed=0
+      for service in \
+        adservice \
+        cartservice \
+        checkoutservice \
+        currencyservice \
+        emailservice \
+        frontend \
+        paymentservice \
+        productcatalogservice \
+        recommendationservice \
+        shippingservice
+      do
+        echo "Updating $service -> $CI_COMMIT_SHORT_SHA"
 
-      for file in ../*.changed; do
-        [ -f "$file" ] || continue
-
-        changed=1
-
-        service="$(awk '{print $1}' "$file")"
-        tag="$(awk '{print $2}' "$file")"
-
-        echo "Updating DEV:"
-        echo "  Service: $service"
-        echo "  Tag:     $tag"
-
-        SERVICE="$service" TAG="$tag" \
+        SERVICE="$service" TAG="$CI_COMMIT_SHORT_SHA" \
         yq -i '
           (.images[] | select(.name == env(SERVICE)).newTag) = env(TAG)
         ' overlays/dev/kustomization.yaml
       done
 
-      if [ "$changed" -eq 0 ]; then
-        echo "No changed services found."
-        exit 0
-      fi
-
     - git config user.name "GitLab CI"
     - git config user.email "gitlab-ci@gitlab.local"
-
     - git add overlays/dev/kustomization.yaml
 
     - |
@@ -233,92 +125,74 @@ update-dev:
         exit 0
       fi
 
-    - git commit -m "update dev images ${CI_COMMIT_SHORT_SHA}"
-
+    - git commit -m "deploy $CI_COMMIT_SHORT_SHA to dev"
     - git push origin main
 
 
 # ============================================================
-# Production Promotion Gate
+# MANUAL PRODUCTION PROMOTION
 # ============================================================
 
 promote-prod:
   stage: promote
-  image: alpine:3.22
-
-  rules:
-    - changes:
-        - src/**/*
 
   script:
-    - echo "========================================"
-    - echo " Production Promotion"
-    - echo "========================================"
-    - echo ""
-    - echo "Images from this pipeline:"
     - |
-      for file in *.changed; do
-        [ -f "$file" ] || continue
-        cat "$file"
-      done
-    - echo ""
-    - echo "These images were already built and scanned."
-    - echo "Promoting them to production."
+      echo "========================================"
+      echo "Production Promotion"
+      echo "========================================"
+      echo "DEV deployment completed."
+      echo "Promoting image tag: $CI_COMMIT_SHORT_SHA"
+      echo "The same images will be deployed to PROD."
 
   when: manual
   allow_failure: false
 
 
 # ============================================================
-# Update Prod GitOps
+# DEPLOY TO PROD
 # ============================================================
 
 update-prod:
   stage: deploy-prod
   image: alpine:3.22
 
-  rules:
-    - changes:
-        - src/**/*
+  needs:
+    - promote-prod
 
   script:
     - apk add --no-cache git yq
-
-    - git clone "https://oauth2:${GITOPS_TOKEN}@gitlab.local/online-boutique-gitops.git"
-
+    - git clone "https://x-access-token:${GITOPS_TOKEN}@github.com/Alireza-Hoseini-sha/online-boutique-gitops.git"
     - cd online-boutique-gitops
 
     - |
-      set -eu
+      echo "========================================"
+      echo "Updating PROD"
+      echo "Image tag: $CI_COMMIT_SHORT_SHA"
+      echo "========================================"
 
-      changed=0
+      for service in \
+        adservice \
+        cartservice \
+        checkoutservice \
+        currencyservice \
+        emailservice \
+        frontend \
+        paymentservice \
+        productcatalogservice \
+        recommendationservice \
+        shippingservice
+      do
+        echo "Updating $service -> $CI_COMMIT_SHORT_SHA"
 
-      for file in ../*.changed; do
-        [ -f "$file" ] || continue
-
-        changed=1
-
-        service="$(awk '{print $1}' "$file")"
-        tag="$(awk '{print $2}' "$file")"
-
-        echo "Promoting to PROD:"
-        echo "  Service: $service"
-        echo "  Tag:     $tag"
-
-        SERVICE="$service" TAG="$tag" \
+        SERVICE="$service" TAG="$CI_COMMIT_SHORT_SHA" \
         yq -i '
           (.images[] | select(.name == env(SERVICE)).newTag) = env(TAG)
         ' overlays/prod/kustomization.yaml
       done
 
-      if [ "$changed" -eq 0 ]; then
-        echo "No changed services found."
-        exit 0
-      fi
-
     - git config user.name "GitLab CI"
     - git config user.email "gitlab-ci@gitlab.local"
-
     - git add overlays/prod/kustomization.yaml
 
     - |
@@ -327,6 +201,5 @@ update-prod:
         exit 0
       fi
 
-    - git commit -m "promote images ${CI_COMMIT_SHORT_SHA} to prod"
-
+    - git commit -m "promote $CI_COMMIT_SHORT_SHA to prod"
     - git push origin main
